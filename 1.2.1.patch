@@ -1,0 +1,51 @@
+import defaultSetting from './defaultSetting'
+
+// 简易版本号比较工具 (v1 < v2 返回 true)
+function isVersionLessThan(v1: string, v2: string): boolean {
+  const v1Parts = (v1 || '0.0.0').split('.').map(Number)
+  const v2Parts = v2.split('.').map(Number)
+  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+    const num1 = v1Parts[i] || 0
+    const num2 = v2Parts[i] || 0
+    if (num1 < num2) return true
+    if (num1 > num2) return false
+  }
+  return false
+}
+
+export function migrateUserConfig(localConfig: Record<string, any>): typeof defaultSetting {
+  const currentVersion = defaultSetting.version;
+
+  // 如果本地版本低于当前版本，执行迁移逻辑
+  if (isVersionLessThan(localConfig.version, currentVersion)) {
+    
+    // 假设 2.2.0 版本引入了 playQuality 类型变更和 crossfade 字段
+    if (isVersionLessThan(localConfig.version, '2.2.0')) {
+      // 安全地将字符串 '128k' 转换为数字 128
+      if (typeof localConfig['player.playQuality'] === 'string') {
+        const match = localConfig['player.playQuality'].match(/\d+/);
+        localConfig['player.playQuality'] = match ? parseInt(match[0], 10) : 128;
+      }
+    }
+    
+    // 如果后续还有 2.3.0, 2.4.0 的重大破坏性更新，可以在这里继续添加 if 判断...
+
+    // 升级完成后，将版本号更新为最新版
+    localConfig.version = currentVersion;
+  }
+
+  // 以最新的 defaultSetting 为基准生成最终配置 (白名单机制)
+  const finalConfig: any = {};
+  
+  for (const key of Object.keys(defaultSetting)) {
+    // 补全新字段：如果本地有值，则继承用户设置；否则回退到 defaultSetting 的默认值
+    // 新增的 'player.crossfade' 由于本地不存在，会自然读取默认值
+    if (key in localConfig && localConfig[key] !== undefined) {
+      finalConfig[key] = localConfig[key];
+    } else {
+      finalConfig[key] = (defaultSetting as any)[key];
+    }
+  }
+
+  return finalConfig;
+}
