@@ -1,0 +1,179 @@
+diff --git a/src/common/defaultSetting.ts b/src/common/defaultSetting.ts
+index e4ce730f..a1b2c3d4 100644
+--- a/src/common/defaultSetting.ts
++++ b/src/common/defaultSetting.ts
+@@ -7,7 +7,6 @@ const isWin = process.platform == 'win32'
+ const defaultSetting: LX.AppSetting = {
+-  version: '2.1.0',
++  version: '2.3.0',
+
+   'common.windowSizeId': 3,
+   'common.fontSize': 16,
+   'common.startInFullscreen': false,
+   'common.langId': null,
+   'common.apiSource': 'temp',
+   'common.sourceNameType': 'alias',
+   'common.font': '',
+   'common.isShowAnimation': true,
+   'common.randomAnimate': true,
+   'common.isAgreePact': false,
+-  'common.controlBtnPosition': isMac ? 'left' : 'right',
+   'common.playBarProgressStyle': 'mini',
+   'common.transparentWindow': !isMac,
+   'common.tryAutoUpdate': true,
+@@ -38,7 +37,8 @@ const defaultSetting: LX.AppSetting = {
+   'player.startupAutoPlay': false,
+   'player.togglePlayMethod': 'listLoop',
+-  'player.playQuality': '128k',
++  'player.playQuality': 128,
+   'player.isShowTaskProgess': true,
+   'player.isShowStatusBarLyric': false,
+   'player.volume': 1,
+   'player.powerSaveBlocker': true,
+   'player.isMute': false,
+   'player.playbackRate': 1,
+   'player.preservesPitch': true,
+   'player.isMaxOutputChannelCount': false,
+   'player.mediaDeviceId': 'default',
+   'player.isMediaDeviceRemovedStopPlay': false,
+   'player.isShowLyricTranslation': false,
+   'player.isShowLyricRoma': false,
+   'player.isSwapLyricTranslationAndRoma': false,
+   'player.isS2t': false,
+   'player.isPlayLxlrc': !isMac,
+   'player.isSavePlayTime': false,
+   'player.audioVisualization': false,
+   'player.waitPlayEndStop': true,
+   'player.waitPlayEndStopTime': '',
+   'player.autoSkipOnError': true,
+   'player.isAutoCleanPlayedList': false,
++  'player.crossfade': 0,
+   'player.soundEffect.convolution.fileName': '',
+
+diff --git a/src/common/types/common.d.ts b/src/common/types/common.d.ts
+index f5e6g7h8..c9d0e1f2 100644
+--- a/src/common/types/common.d.ts
++++ b/src/common/types/common.d.ts
+@@ -50,7 +50,7 @@ declare namespace LX {
+   type OnlineSource = 'kw' | 'kg' | 'tx' | 'wy' | 'mg'
+   type Source = OnlineSource | 'local'
+-  type Quality = '128k' | '320k' | 'flac' | 'flac24bit' | '192k' | 'ape' | 'wav'
++  type Quality = 128 | 192 | 320 | 999 | 1000
+
+   type QualityList = Partial<Record<LX.Source, LX.Quality[]>>
+
+diff --git a/src/common/types/app_setting.d.ts b/src/common/types/app_setting.d.ts
+index b1c2d3e4..e5f6a7b8 100644
+--- a/src/common/types/app_setting.d.ts
++++ b/src/common/types/app_setting.d.ts
+@@ -56,11 +56,6 @@ declare global {
+       'common.isAgreePact': boolean
+
+       /**
+-       * 控制按钮位置，左边、右边
+-       */
+-      'common.controlBtnPosition': 'left' | 'right'
+-
+-      /**
+        * 播放栏进度条样式
+        */
+       'common.playBarProgressStyle': 'mini' | 'full' | 'middle'
+@@ -100,6 +95,16 @@ declare global {
+       'player.playQuality': LX.Quality
+
+       /**
++       * 淡入淡出时长（毫秒），0 表示关闭
++       */
++      'player.crossfade': number
++
++      /**
+        * 是否显示任务栏进度条
+        */
+       'player.isShowTaskProgess': boolean
+@@ -686,5 +691,10 @@ declare global {
+        * 是否在离开搜索界面时自动清空搜索结果列表
+        */
+       'odc.isAutoClearSearchList': boolean
++
++      /**
++       * 废弃配置保留区，存储已废弃但未删除的配置项，供降级回滚使用
++       */
++      _deprecated?: Record<string, any>
+     }
+   }
+
+diff --git a/src/common/utils/migrateSetting.ts b/src/common/utils/migrateSetting.ts
+index 23eeb276..d4e5f6a7 100644
+--- a/src/common/utils/migrateSetting.ts
++++ b/src/common/utils/migrateSetting.ts
+@@ -1,5 +1,10 @@
+ import { compareVer } from './index'
+
++const DEPRECATED_CONFIG_KEY = '_deprecated'
++
++interface DeprecationRecord {
++  [key: string]: any
++}
+
+ const oldThemeMap = {
+   0: 'green',
+@@ -136,8 +141,46 @@ export default (setting: any): Partial<LX.AppSetting> => {
+     setting['sync.erver.port'] = setting['sync.port']
+     setting.version = '2.1.0'
+   }
++
+
++  // ========== v2.2.0 之前的迁移 ==========
++  // 变更点：
++  // 1. player.playQuality 从字符串（如 '128k'）改为数字（如 128）
++  // 2. 新增 player.crossfade 字段（通过白名单合并自动补全，无需手动处理）
++  if (compareVer(setting.version, '2.2.0') < 0) {
++    const playQuality = setting['player.playQuality']
++    if (typeof playQuality === 'string') {
++      const match = playQuality.match(/^(\d+)/)
++      if (match) {
++        setting['player.playQuality'] = parseInt(match[1], 10)
++      } else {
++        setting['player.playQuality'] = 128
++      }
++    }
++
++    setting.version = '2.2.0'
++  }
++
++  // ========== v2.3.0 之前的迁移 ==========
++  // 变更点：
++  // 1. common.controlBtnPosition 被废弃，不再支持
++  //    将废弃值保存到 _deprecated 保留区，保证数据不丢失且可降级回滚
++  //    最终配置中该字段由白名单合并机制自动过滤（defaultSetting 中已移除该 key）
++  if (compareVer(setting.version, '2.3.0') < 0) {
++    const deprecatedValue = setting['common.controlBtnPosition']
++    if (deprecatedValue !== undefined) {
++      if (!setting[DEPRECATED_CONFIG_KEY]) {
++        setting[DEPRECATED_CONFIG_KEY] = {}
++      }
++      ;(setting[DEPRECATED_CONFIG_KEY] as DeprecationRecord)['common.controlBtnPosition'] = deprecatedValue
++    }
++
++    setting.version = '2.3.0'
++  }
+
+
+   return setting
+ }
+
+diff --git a/src/main/utils/index.ts b/src/main/utils/index.ts
+index a2b3c4d5..f6g7h8i9 100644
+--- a/src/main/utils/index.ts
++++ b/src/main/utils/index.ts
+@@ -127,6 +127,11 @@ export const updateSetting = (setting?: Partial<LX.AppSetting>, isInit: boolean
+   const result = mergeSetting(originSetting, setting)
+
+   result.setting.version = defaultSetting.version
++
++  if (isInit && (setting as any)?._deprecated) {
++    result.setting._deprecated = (setting as any)._deprecated
++  }
+
+   electronStore_config.override({ version: result.setting.version, setting: result.setting })
+   return result
