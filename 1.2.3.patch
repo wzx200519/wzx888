@@ -1,0 +1,11 @@
+diff --git a/src/common/utils/migrateSetting.ts b/src/common/utils/migrateSetting.ts
+index 6c06630f..5fdb4f2e 100644
+--- a/src/common/utils/migrateSetting.ts
++++ b/src/common/utils/migrateSetting.ts
+@@ -140,6 +140,3 @@ export default (setting: any): Partial<LX.AppSetting> => {
+     setting.version = '2.1.0'
+   }
+ 
+-
+-  return setting
+-}
