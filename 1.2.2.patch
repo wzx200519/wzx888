@@ -1,0 +1,118 @@
+diff --git a/1.2.1.patch b/1.2.1.patch
+index e69de29b..5ff5e6f7 100644
+--- a/1.2.1.patch
++++ b/1.2.1.patch
+@@ -0,0 +1,51 @@
++import defaultSetting from './defaultSetting'
++
++// 简易版本号比较工具 (v1 < v2 返回 true)
++function isVersionLessThan(v1: string, v2: string): boolean {
++  const v1Parts = (v1 || '0.0.0').split('.').map(Number)
++  const v2Parts = v2.split('.').map(Number)
++  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
++    const num1 = v1Parts[i] || 0
++    const num2 = v2Parts[i] || 0
++    if (num1 < num2) return true
++    if (num1 > num2) return false
++  }
++  return false
++}
++
++export function migrateUserConfig(localConfig: Record<string, any>): typeof defaultSetting {
++  const currentVersion = defaultSetting.version;
++
++  // 如果本地版本低于当前版本，执行迁移逻辑
++  if (isVersionLessThan(localConfig.version, currentVersion)) {
++    
++    // 假设 2.2.0 版本引入了 playQuality 类型变更和 crossfade 字段
++    if (isVersionLessThan(localConfig.version, '2.2.0')) {
++      // 安全地将字符串 '128k' 转换为数字 128
++      if (typeof localConfig['player.playQuality'] === 'string') {
++        const match = localConfig['player.playQuality'].match(/\d+/);
++        localConfig['player.playQuality'] = match ? parseInt(match[0], 10) : 128;
++      }
++    }
++    
++    // 如果后续还有 2.3.0, 2.4.0 的重大破坏性更新，可以在这里继续添加 if 判断...
++
++    // 升级完成后，将版本号更新为最新版
++    localConfig.version = currentVersion;
++  }
++
++  // 以最新的 defaultSetting 为基准生成最终配置 (白名单机制)
++  const finalConfig: any = {};
++  
++  for (const key of Object.keys(defaultSetting)) {
++    // 补全新字段：如果本地有值，则继承用户设置；否则回退到 defaultSetting 的默认值
++    // 新增的 'player.crossfade' 由于本地不存在，会自然读取默认值
++    if (key in localConfig && localConfig[key] !== undefined) {
++      finalConfig[key] = localConfig[key];
++    } else {
++      finalConfig[key] = (defaultSetting as any)[key];
++    }
++  }
++
++  return finalConfig;
++}
+\ No newline at end of file
+diff --git a/src/common/defaultSetting.ts b/src/common/defaultSetting.ts
+index e4ce730f..fcb61c39 100644
+--- a/src/common/defaultSetting.ts
++++ b/src/common/defaultSetting.ts
+@@ -5,7 +5,7 @@ const isMac = process.platform == 'darwin'
+ const isWin = process.platform == 'win32'
+ 
+ const defaultSetting: LX.AppSetting = {
+-  version: '2.1.0',
++  version: '2.2.0',
+ 
+   'common.windowSizeId': 3,
+   'common.fontSize': 16,
+@@ -64,6 +64,7 @@ const defaultSetting: LX.AppSetting = {
+   'player.soundEffect.panner.soundR': 5,
+   'player.soundEffect.panner.speed': 25,
+   'player.soundEffect.pitchShifter.playbackRate': 1,
++  'player.crossfade': 0,
+ 
+   'playDetail.isZoomActiveLrc': false,
+   'playDetail.isShowLyricProgressSetting': false,
+diff --git a/src/common/utils/migrateSetting.ts b/src/common/utils/migrateSetting.ts
+index 6c06630f..23eeb276 100644
+--- a/src/common/utils/migrateSetting.ts
++++ b/src/common/utils/migrateSetting.ts
+@@ -140,6 +140,35 @@ export default (setting: any): Partial<LX.AppSetting> => {
+     setting.version = '2.1.0'
+   }
+ 
++  // 迁移 v2.3.0 之前的设置数据 (示例：player.playQuality 字符串转数字)
++  if (compareVer(setting.version, '2.2.0') < 0) {
++    // 1. player.playQuality 从字符串（如 '128k'）转换为数字（如 128）
++    const playQuality = setting['player.playQuality']
++    if (typeof playQuality === 'string') {
++      // 提取数字部分
++      const match = playQuality.match(/^(\d+)/)
++      if (match) {
++        setting['player.playQuality'] = parseInt(match[1], 10)
++      } else {
++        // 无法解析时使用默认值
++        setting['player.playQuality'] = 128
++      }
++    }
++
++    // 2. 处理废弃配置项：common.controlBtnPosition
++    // 将废弃配置保存到 _deprecated 字段中，避免数据丢失
++    if (setting['common.controlBtnPosition'] !== undefined) {
++      if (!setting._deprecated) setting._deprecated = {}
++      setting._deprecated['common.controlBtnPosition'] = setting['common.controlBtnPosition']
++      // 可以选择删除或保留旧字段，这里我们保留它以安全起见
++      // delete setting['common.controlBtnPosition']
++    }
++
++    // 新增字段 player.crossfade 会在后续 mergeSetting 中自动补全
++
++    setting.version = '2.2.0'
++  }
++
+ 
+   return setting
+ }
