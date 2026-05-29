@@ -1,10 +1,15 @@
 import path from 'node:path'
 import os from 'node:os'
 
-const isMac = process.platform == 'darwin'
-const isWin = process.platform == 'win32'
+type PlatformOverrideKeys =
+  | 'common.controlBtnPosition'
+  | 'common.transparentWindow'
+  | 'player.isPlayLxlrc'
+  | 'desktopLyric.isLockScreen'
 
-const defaultSetting: LX.AppSetting = {
+type BaseSetting = Omit<LX.AppSetting, PlatformOverrideKeys>
+
+const baseSetting: BaseSetting = {
   version: '2.1.0',
 
   'common.windowSizeId': 3,
@@ -17,9 +22,7 @@ const defaultSetting: LX.AppSetting = {
   'common.isShowAnimation': true,
   'common.randomAnimate': true,
   'common.isAgreePact': false,
-  'common.controlBtnPosition': isMac ? 'left' : 'right',
   'common.playBarProgressStyle': 'mini',
-  'common.transparentWindow': !isMac,
   'common.tryAutoUpdate': true,
   'common.showChangeLog': true,
 
@@ -40,7 +43,6 @@ const defaultSetting: LX.AppSetting = {
   'player.isShowLyricRoma': false,
   'player.isSwapLyricTranslationAndRoma': false,
   'player.isS2t': false,
-  'player.isPlayLxlrc': !isMac,
   'player.isSavePlayTime': false,
   'player.audioVisualization': false,
   'player.waitPlayEndStop': true,
@@ -83,7 +85,6 @@ const defaultSetting: LX.AppSetting = {
   'desktopLyric.height': 300,
   'desktopLyric.x': null,
   'desktopLyric.y': null,
-  'desktopLyric.isLockScreen': isWin,
   'desktopLyric.isDelayScroll': true,
   'desktopLyric.scrollAlign': 'center',
   'desktopLyric.isHoverHide': false,
@@ -95,7 +96,6 @@ const defaultSetting: LX.AppSetting = {
   'desktopLyric.style.lyricUnplayColor': 'rgba(255, 255, 255, 1)',
   'desktopLyric.style.lyricPlayedColor': 'rgba(7, 197, 86, 1)',
   'desktopLyric.style.lyricShadowColor': 'rgba(0, 0, 0, 0.18)',
-  // 'desktopLyric.style.fontWeight': false,
   'desktopLyric.style.opacity': 95,
   'desktopLyric.style.ellipsis': false,
   'desktopLyric.style.isZoomActiveLrc': false,
@@ -136,7 +136,6 @@ const defaultSetting: LX.AppSetting = {
   'network.proxy.port': '',
 
   'tray.enable': false,
-  // 'tray.isToTray': false,
   'tray.themeId': 0,
 
   'sync.mode': 'server',
@@ -149,23 +148,70 @@ const defaultSetting: LX.AppSetting = {
   'openAPI.port': '23330',
   'openAPI.bindLan': false,
 
-  // 'theme.id': 'blue_plus',
   'theme.id': 'green',
+  'theme.autoHolidayTheme': true,
   'theme.lightId': 'green',
   'theme.darkId': 'black',
 
   'odc.isAutoClearSearchInput': false,
   'odc.isAutoClearSearchList': false,
-
 }
 
-
-// 使用新年皮肤
-if (new Date().getMonth() < 2) {
-  defaultSetting['theme.id'] = 'happy_new_year'
-  defaultSetting['desktopLyric.style.lyricPlayedColor'] = 'rgba(255, 57, 71, 1)'
+const platformOverrides: Partial<Record<NodeJS.Platform, Partial<LX.AppSetting>>> = {
+  darwin: {
+    'common.controlBtnPosition': 'left',
+    'common.transparentWindow': false,
+    'player.isPlayLxlrc': false,
+    'desktopLyric.isLockScreen': false,
+  },
+  win32: {
+    'common.controlBtnPosition': 'right',
+    'common.transparentWindow': true,
+    'player.isPlayLxlrc': true,
+    'desktopLyric.isLockScreen': true,
+  },
 }
 
+const fallbackPlatformOverrides: Partial<LX.AppSetting> = {
+  'common.controlBtnPosition': 'right',
+  'common.transparentWindow': true,
+  'player.isPlayLxlrc': true,
+  'desktopLyric.isLockScreen': false,
+}
+
+export interface HolidayRule {
+  id: string
+  match: (date: Date) => boolean
+  overrides: Partial<LX.AppSetting>
+}
+
+export const holidayRules: HolidayRule[] = [
+  {
+    id: 'new_year',
+    match: date => date.getMonth() < 2,
+    overrides: {
+      'theme.id': 'happy_new_year',
+      'desktopLyric.style.lyricPlayedColor': 'rgba(255, 57, 71, 1)',
+    },
+  },
+]
+
+export const getPlatformOverrides = (platform: NodeJS.Platform = process.platform): Partial<LX.AppSetting> => {
+  return platformOverrides[platform] ?? fallbackPlatformOverrides
+}
+
+export const getHolidayOverrides = (date = new Date()): Partial<LX.AppSetting> => {
+  const activeRule = holidayRules.find(rule => rule.match(date))
+  return activeRule ? activeRule.overrides : {}
+}
+
+export const createDefaultSetting = (): LX.AppSetting => {
+  return {
+    ...baseSetting,
+    ...getPlatformOverrides(),
+  } as LX.AppSetting
+}
+
+const defaultSetting = createDefaultSetting()
 
 export default defaultSetting
-

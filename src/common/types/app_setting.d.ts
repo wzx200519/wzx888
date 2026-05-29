@@ -586,6 +586,11 @@ declare global {
       'theme.id': string
 
       /**
+       * 是否自动跟随节日切换主题
+       */
+      'theme.autoHolidayTheme': boolean
+
+      /**
        * 亮色主题id
        */
       'theme.lightId': string
