@@ -1,0 +1,174 @@
+diff --git a/src/common/utils/compareVer.ts b/src/common/utils/compareVer.ts
+new file mode 100644
+index 00000000..a1b2c3d4
+--- /dev/null
++++ b/src/common/utils/compareVer.ts
+@@ -0,0 +1,12 @@
++export function compareVer(v1: string, v2: string): number {
++  const v1Parts = (v1 || '0.0.0').split('.').map(Number)
++  const v2Parts = v2.split('.').map(Number)
++
++  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
++    const num1 = v1Parts[i] || 0
++    const num2 = v2Parts[i] || 0
++    if (num1 < num2) return -1
++    if (num1 > num2) return 1
++  }
++  return 0
++}
+diff --git a/src/common/utils/migrateSetting.ts b/src/common/utils/migrateSetting.ts
+new file mode 100644
+index 00000000..e5f6g7h8
+--- /dev/null
++++ b/src/common/utils/migrateSetting.ts
+@@ -0,0 +1,113 @@
++import { compareVer } from './compareVer'
++
++const DEPRECATED_CONFIG_KEY = '_deprecated'
++
++interface DeprecationRecord {
++  [key: string]: any
++}
++
++export default (setting: any): any => {
++  setting = { ...setting }
++
++  // ========== v2.0.0 之前的迁移 ==========
++  if (compareVer(setting.version, '2.0.0') < 0) {
++    if (setting.list?.scroll) {
++      setting.list.isSaveScrollLocation &&= setting.list.scroll.enable
++      delete setting.list.scroll
++    }
++
++    if (setting.player?.isShowLyricTransition != null) {
++      setting.player.isShowLyricTranslation = setting.player.isShowLyricTransition
++      delete setting.player.isShowLyricTransition
++    }
++
++    if (setting.themeId != null) {
++      setting['theme.id'] = setting.themeId
++      delete setting.themeId
++    }
++
++    setting['common.windowSizeId'] = setting.windowSizeId
++    setting['common.startInFullscreen'] = setting.startInFullscreen
++    setting['common.langId'] = setting.langId
++    setting['common.apiSource'] = setting.apiSource
++    setting['common.controlBtnPosition'] = setting.controlBtnPosition
++    setting['player.togglePlayMethod'] = setting.player?.togglePlayMethod
++    setting['player.isShowTaskProgess'] = setting.player?.isShowTaskProgess
++    setting['player.volume'] = setting.player?.volume
++    setting['player.isMute'] = setting.player?.isMute
++    setting['player.mediaDeviceId'] = setting.player?.mediaDeviceId
++    setting['player.isShowLyricTranslation'] = setting.player?.isShowLyricTranslation
++    setting['player.isShowLyricRoma'] = setting.player?.isShowLyricRoma
++    setting['player.isS2t'] = setting.player?.isS2t
++    setting['player.isPlayLxlrc'] = setting.player?.isPlayLxlrc
++    setting['player.isSavePlayTime'] = setting.player?.isSavePlayTime
++    setting['player.audioVisualization'] = setting.player?.audioVisualization
++    setting['playDetail.isZoomActiveLrc'] = setting.playDetail?.isZoomActiveLrc
++    setting['playDetail.style.fontSize'] = setting.playDetail?.style?.fontSize
++    setting['playDetail.style.align'] = setting.playDetail?.style?.align
++    setting['desktopLyric.enable'] = setting.desktopLyric?.enable
++    setting['desktopLyric.isLock'] = setting.desktopLyric?.isLock
++    setting['desktopLyric.isAlwaysOnTop'] = setting.desktopLyric?.isAlwaysOnTop
++    setting['desktopLyric.width'] = setting.desktopLyric?.width
++    setting['desktopLyric.height'] = setting.desktopLyric?.height
++    setting['desktopLyric.x'] = setting.desktopLyric?.x
++    setting['desktopLyric.y'] = setting.desktopLyric?.y
++
++    setting.version = '2.0.0'
++  }
++
++  // ========== v2.1.0 之前的迁移 ==========
++  if (compareVer(setting.version, '2.1.0') < 0) {
++    if (setting['sync.port'] != null) {
++      setting['sync.server.port'] = setting['sync.port']
++      delete setting['sync.port']
++    }
++    setting.version = '2.1.0'
++  }
++
++  // ========== v2.2.0 之前的迁移 ==========
++  // 变更点：
++  // 1. player.playQuality 从字符串 '128k' 改为数字 128
++  // 2. 新增 player.crossfade 字段（通过白名单自动补全）
++  if (compareVer(setting.version, '2.2.0') < 0) {
++    const playQuality = setting['player.playQuality']
++    if (typeof playQuality === 'string') {
++      const match = playQuality.match(/^(\d+)/)
++      if (match) {
++        setting['player.playQuality'] = parseInt(match[1], 10)
++      } else {
++        setting['player.playQuality'] = 128
++      }
++    }
++    setting.version = '2.2.0'
++  }
++
++  // ========== v2.3.0 之前的迁移 ==========
++  // 变更点：
++  // 1. common.controlBtnPosition 被废弃，不再支持
++  if (compareVer(setting.version, '2.3.0') < 0) {
++    const deprecatedValue = setting['common.controlBtnPosition']
++    if (deprecatedValue !== undefined) {
++      if (!setting[DEPRECATED_CONFIG_KEY]) {
++        setting[DEPRECATED_CONFIG_KEY] = {}
++      }
++      (setting[DEPRECATED_CONFIG_KEY] as DeprecationRecord)['common.controlBtnPosition'] = deprecatedValue
++    }
++    setting.version = '2.3.0'
++  }
++
++  return setting
++}
+diff --git a/src/common/utils/mergeSetting.ts b/src/common/utils/mergeSetting.ts
+new file mode 100644
+index 00000000..b2c3d4e5
+--- /dev/null
++++ b/src/common/utils/mergeSetting.ts
+@@ -0,0 +1,22 @@
++import defaultSetting from '../defaultSetting'
++
++export function mergeSetting(
++  localConfig: Record<string, any>,
++  migratedConfig: Record<string, any>
++): typeof defaultSetting {
++  const finalConfig: any = {}
++
++  for (const key of Object.keys(defaultSetting)) {
++    if (key in migratedConfig && migratedConfig[key] !== undefined) {
++      finalConfig[key] = migratedConfig[key]
++    } else {
++      finalConfig[key] = (defaultSetting as any)[key]
++    }
++  }
++
++  finalConfig.version = defaultSetting.version
++  if (migratedConfig._deprecated) {
++    finalConfig._deprecated = migratedConfig._deprecated
++  }
++
++  return finalConfig
++}
+diff --git a/src/common/utils/settingManager.ts b/src/common/utils/settingManager.ts
+new file mode 100644
+index 00000000..c3d4e5f6
+--- /dev/null
++++ b/src/common/utils/settingManager.ts
+@@ -0,0 +1,10 @@
++import migrateSetting from './migrateSetting'
++import { mergeSetting } from './mergeSetting'
++import defaultSetting from '../defaultSetting'
++
++export function processUserConfig(userConfig: Record<string, any>): typeof defaultSetting {
++  const migrated = migrateSetting(userConfig)
++  const finalConfig = mergeSetting(userConfig, migrated)
++  return finalConfig
++}
++
++// 应用启动时
++// import { processUserConfig } from '@/common/utils/settingManager'
++// const rawConfig = loadUserConfig()
++// const finalConfig = processUserConfig(rawConfig)
++// 应用使用 finalConfig 作为当前配置
