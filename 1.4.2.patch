@@ -1,0 +1,110 @@
+--- src/common/types/app_setting.d.ts
++++ src/common/types/app_setting.d.ts
+@@ -587,4 +587,9 @@
+ 
+       /**
++       * 是否自动跟随节日切换主题
++       */
++      'theme.autoHolidayTheme': boolean
++
++      /**
+        * 亮色主题id
+        */
+--- src/common/defaultSetting.ts
++++ src/common/defaultSetting.ts
+@@ -5,5 +5,5 @@
+ const isWin = process.platform == 'win32'
+ 
+-const defaultSetting: LX.AppSetting = {
++const baseSetting: Omit<LX.AppSetting, 'common.controlBtnPosition' | 'common.transparentWindow' | 'player.isPlayLxlrc' | 'desktopLyric.isLockScreen'> = {
+   version: '2.1.0',
+ 
+@@ -18,7 +18,5 @@
+   'common.randomAnimate': true,
+   'common.isAgreePact': false,
+-  'common.controlBtnPosition': isMac ? 'left' : 'right',
+   'common.playBarProgressStyle': 'mini',
+-  'common.transparentWindow': !isMac,
+   'common.tryAutoUpdate': true,
+   'common.showChangeLog': true,
+@@ -41,5 +39,4 @@
+   'player.isSwapLyricTranslationAndRoma': false,
+   'player.isS2t': false,
+-  'player.isPlayLxlrc': !isMac,
+   'player.isSavePlayTime': false,
+   'player.audioVisualization': false,
+@@ -84,5 +81,4 @@
+   'desktopLyric.x': null,
+   'desktopLyric.y': null,
+-  'desktopLyric.isLockScreen': isWin,
+   'desktopLyric.isDelayScroll': true,
+   'desktopLyric.scrollAlign': 'center',
+@@ -150,6 +146,6 @@
+   'openAPI.bindLan': false,
+ 
+-  // 'theme.id': 'blue_plus',
+   'theme.id': 'green',
++  'theme.autoHolidayTheme': true,
+   'theme.lightId': 'green',
+   'theme.darkId': 'black',
+@@ -157,14 +153,54 @@
+   'odc.isAutoClearSearchInput': false,
+   'odc.isAutoClearSearchList': false,
++}
++
++const platformOverrides: Record<string, Partial<LX.AppSetting>> = {
++  darwin: {
++    'common.controlBtnPosition': 'left',
++    'common.transparentWindow': false,
++    'player.isPlayLxlrc': false,
++    'desktopLyric.isLockScreen': false,
++  },
++  win32: {
++    'common.controlBtnPosition': 'right',
++    'common.transparentWindow': true,
++    'player.isPlayLxlrc': true,
++    'desktopLyric.isLockScreen': true,
++  }
++}
+ 
++}
+ 
++const fallbackPlatformOverrides: Partial<LX.AppSetting> = {
++  'common.controlBtnPosition': 'right',
++  'common.transparentWindow': true,
++  'player.isPlayLxlrc': true,
++  'desktopLyric.isLockScreen': false,
++}
+ 
+-// 使用新年皮肤
+-if (new Date().getMonth() < 2) {
+-  defaultSetting['theme.id'] = 'happy_new_year'
+-  defaultSetting['desktopLyric.style.lyricPlayedColor'] = 'rgba(255, 57, 71, 1)'
++const defaultSetting: LX.AppSetting = {
++  ...baseSetting,
++  ...(platformOverrides[process.platform] || fallbackPlatformOverrides)
++} as LX.AppSetting
++
++interface HolidayRule {
++  id: string
++  match: (date: Date) => boolean
++  overrides: Partial<LX.AppSetting>
+ }
+ 
++export const holidayRules: HolidayRule[] = [
++  {
++    id: 'new_year',
++    match: (date) => date.getMonth() < 2,
++    overrides: {
++      'theme.id': 'happy_new_year',
++      'desktopLyric.style.lyricPlayedColor': 'rgba(255, 57, 71, 1)'
++    }
++  }
++]
++
++export function getHolidayOverrides(date = new Date()): Partial<LX.AppSetting> {
++  const activeRule = holidayRules.find(rule => rule.match(date))
++  return activeRule ? activeRule.overrides : {}
++}
+ 
+ export default defaultSetting
